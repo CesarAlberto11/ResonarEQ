@@ -32,7 +32,7 @@ li{display:flex;justify-content:space-between;padding:9px 10px;border-radius:8px
 <audio id="au" preload="auto"></audio>
 
 <div class="card"><canvas id="cv"></canvas><div id="title">Ninguna canción cargada</div>
-<div class="row"><button id="pv">⏮</button><button id="pl">▶</button><button id="nx">⏭</button><span id="tm" class="g" style="color:var(--mu);text-align:right">0:00 / 0:00</span><button id="vm">3D</button></div><input id="sk" type="range" min="0" max="1000" value="0" style="margin-top:10px"></div>
+<div class="row"><button id="pv">⏮</button><button id="pl">▶</button><button id="nx">⏭</button><span id="tm" class="g" style="color:var(--mu);text-align:right">0:00 / 0:00</span><button id="vm">3D</button></div><input id="sk" type="range" min="0" max="1000" value="0" style="margin-top:10px"><div id="dbg" style="color:#ff8a9b;font-size:12px;margin-top:6px"></div></div>
 
 <div class="card"><h2>Lista de reproducción <span class="row"><button id="sh" style="padding:4px 10px">Mezclar</button><button id="rp" style="padding:4px 10px">Sin repetir</button><button id="ec" style="padding:4px 10px">Vaciar</button></span></h2><ul id="tl" style="margin-top:0"></ul></div>
 
@@ -55,6 +55,8 @@ li{display:flex;justify-content:space-between;padding:9px 10px;border-radius:8px
 <script src="lame.min.js"></script>
 <script>
 const $=s=>document.querySelector(s),F=[31,62,125,250,500,1000,2000,4000,8000,16000],FL=['31','62','125','250','500','1k','2k','4k','8k','16k'];
+addEventListener('error',e=>{$('#dbg').textContent='Error: '+e.message});addEventListener('unhandledrejection',e=>{$('#dbg').textContent='Error: '+((e.reason&&e.reason.message)||e.reason)});
+document.addEventListener('pointerdown',()=>{if(ctx&&ctx.state!=='running')ctx.resume()},true);
 const au=$('#au'),DEF={pre:0,bass:0,mid:0,treb:0,wet:0,size:2.5,lim:false,byp:false,vol:1,rate:1,th:-6};
 let P={...DEF,b:Array(10).fill(0)},ctx,N={},fa,ta,hist=[],mode='3d',mx=-90,clips=0,wasClip=false,lastT=-9,prevHall={wet:0,size:2.5},curSize=0;
 const SL=[['tn','pre','Preganancia',-12,12,.5,' dB'],['tn','bass','Graves',-12,12,.5,' dB'],['tn','mid','Medios',-12,12,.5,' dB'],['tn','treb','Agudos',-12,12,.5,' dB'],
@@ -73,12 +75,12 @@ function ir(c,s){const sr=c.sampleRate,n=sr*s|0,b=c.createBuffer(2,n,sr);for(let
 function mk(c,src){const bq=(t,f,q=1)=>{const n=c.createBiquadFilter();n.type=t;n.frequency.value=f;n.Q.value=q;return n};
 const n={src,pre:c.createGain(),bass:bq('lowshelf',100),mid:bq('peaking',1000,.8),treb:bq('highshelf',8000),bands:F.map(f=>bq('peaking',f,1.4)),comp:c.createDynamicsCompressor(),dry:c.createGain(),wet:c.createGain(),conv:c.createConvolver(),out:c.createGain()};
 const ch=[n.src,n.pre,n.bass,n.mid,n.treb,...n.bands,n.comp];for(let i=0;i<ch.length-1;i++)ch[i].connect(ch[i+1]);
-n.comp.connect(n.dry);n.comp.connect(n.conv);n.conv.connect(n.wet);n.dry.connect(n.out);n.wet.connect(n.out);return n}
+n.comp.connect(n.dry);n.conv.connect(n.wet);n.dry.connect(n.out);n.wet.connect(n.out);return n}
 function setN(n,c,live){const g=x=>P.byp?0:x;n.pre.gain.value=10**(P.pre/20);n.bass.gain.value=g(P.bass);n.mid.gain.value=g(P.mid);n.treb.gain.value=g(P.treb);n.bands.forEach((f,i)=>f.gain.value=g(P.b[i]));
-n.wet.gain.value=g(P.wet);n.dry.gain.value=1-g(P.wet)*.4;if(!live||Math.abs(P.size-curSize)>.09){n.conv.buffer=ir(c,P.size);if(live)curSize=P.size}
+n.wet.gain.value=g(P.wet);n.dry.gain.value=1-g(P.wet)*.4;const need=g(P.wet)>.001;if(need&&!n.cv){n.comp.connect(n.conv);n.cv=true}else if(!need&&n.cv){n.comp.disconnect(n.conv);n.cv=false}if(!live||Math.abs(P.size-curSize)>.09){n.conv.buffer=ir(c,P.size);if(live)curSize=P.size}
 n.comp.threshold.value=P.lim?-8:0;n.comp.ratio.value=P.lim?12:1;n.comp.attack.value=.003}
-function init(){if(ctx)return;ctx=new(window.AudioContext||window.webkitAudioContext)();ctx.onstatechange=()=>{if(ctx.state==='suspended'&&!au.paused)ctx.resume()};N=mk(ctx,ctx.createMediaElementSource(au));N.an=ctx.createAnalyser();N.an.fftSize=2048;N.an.smoothingTimeConstant=.78;N.out.connect(N.an);N.an.connect(ctx.destination);
-fa=new Uint8Array(N.an.frequencyBinCount);ta=new Float32Array(N.an.fftSize);apply();sizeCv();loop()}
+function init(){if(ctx)return;ctx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:'playback'});ctx.onstatechange=()=>{if(ctx.state==='suspended'&&!au.paused)ctx.resume()};N=mk(ctx,ctx.createMediaElementSource(au));N.an=ctx.createAnalyser();N.an.fftSize=2048;N.an.smoothingTimeConstant=.78;N.out.connect(N.an);N.an.connect(ctx.destination);
+fa=new Uint8Array(N.an.frequencyBinCount);ta=new Float32Array(N.an.fftSize);apply();try{sizeCv()}catch(e){}loop()}
 function apply(){au.playbackRate=P.rate;au.volume=P.vol;if(ctx)setN(N,ctx,true)}
 document.addEventListener('input',e=>{const t=e.target;if(t.dataset.k){P[t.dataset.k]=+t.value;apply();sync()}else if(t.dataset.b!=null){P.b[t.dataset.b]=+t.value;apply();sync()}});
 $('#ps').onchange=e=>{const n=e.target.value;setP(BUILT[n]||CUS[n]||{})};
@@ -88,9 +90,11 @@ $('#rs').onclick=()=>setP({});
 $('#hall').onclick=()=>{if(P.wet>=.3&&P.size>=3.5){P.wet=prevHall.wet;P.size=prevHall.size}else{prevHall={wet:P.wet,size:P.size};P.wet=.35;P.size=4.2}apply();sync()};
 $('#lim').onclick=()=>{P.lim=!P.lim;apply();sync()};$('#byp').onclick=()=>{P.byp=!P.byp;apply();sync()};
 const tf=s=>isFinite(s)?Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'):'0:00';
+function ui(){$('#pl').textContent=au.paused?'▶':'❚❚';$('#tm').textContent=tf(au.currentTime)+' / '+tf(au.duration);if(au.duration)$('#sk').value=au.currentTime/au.duration*1000}
+setInterval(ui,300);
 let tracks=[],cur=-1,rep=0,shuf=false;
 function plist(){const L=$('#tl');L.innerHTML='';if(!tracks.length){L.innerHTML='<li class="em">Carga una o varias canciones para armar tu lista.</li>';return}tracks.forEach((f,i)=>{const li=document.createElement('li'),sp=document.createElement('span');li.dataset.i=i;sp.textContent=(i===cur?'▶ ':'')+f.name;li.append(sp);if(i===cur)li.style.color='var(--a)';L.append(li)})}
-function playT(i){if(i<0||i>=tracks.length)return;init();ctx.resume();cur=i;if(au.src)URL.revokeObjectURL(au.src);au.src=URL.createObjectURL(tracks[i]);$('#title').textContent=tracks[i].name;if(navigator.mediaSession)navigator.mediaSession.metadata=new MediaMetadata({title:tracks[i].name,artist:'Resonar EQ'});clearPk();apply();au.play();plist()}
+function playT(i){if(i<0||i>=tracks.length)return;init();ctx.resume();cur=i;if(au.src)URL.revokeObjectURL(au.src);au.src=URL.createObjectURL(tracks[i]);$('#title').textContent=tracks[i].name;try{navigator.mediaSession.metadata=new MediaMetadata({title:tracks[i].name,artist:'Resonar EQ'})}catch(e){}clearPk();apply();au.play().catch(e=>{$('#dbg').textContent='Toca ▶ para reproducir ('+e.name+')'});plist()}
 function nxt(d){if(!tracks.length)return;let i=cur+d;if(shuf&&tracks.length>1){do i=Math.floor(Math.random()*tracks.length);while(i===cur)}if(i>=tracks.length)i=0;if(i<0)i=tracks.length-1;playT(i)}
 $('#f').onchange=e=>{const fs=[...e.target.files];if(!fs.length)return;tracks.push(...fs);e.target.value='';if(cur<0)playT(0);else plist()};
 $('#tl').onclick=e=>{const l=e.target.closest('li');if(l&&l.dataset.i!=null)playT(+l.dataset.i)};
@@ -99,11 +103,11 @@ $('#sh').onclick=()=>{shuf=!shuf;$('#sh').classList.toggle('on',shuf)};
 $('#rp').onclick=()=>{rep=(rep+1)%3;$('#rp').textContent=['Sin repetir','Repetir lista','Repetir una'][rep];$('#rp').classList.toggle('on',rep>0)};
 $('#ec').onclick=()=>{au.pause();if(au.src)URL.revokeObjectURL(au.src);au.removeAttribute('src');au.load();tracks=[];cur=-1;$('#title').textContent='Ninguna canción cargada';plist()};
 $('#pl').onclick=()=>{if(!tracks.length)return $('#f').click();init();ctx.resume();au.paused?au.play():au.pause()};
-const BG=window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()?Capacitor.registerPlugin('Bg'):null;let bgOn=false;
-function bg(on){if(!BG||on===bgOn)return;bgOn=on;BG[on?'start':'stop']({}).catch(()=>{})}
+let BG=null,bgOn=false;try{if(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform())BG=Capacitor.registerPlugin('Bg')}catch(e){}
+function bg(on){if(!BG||on===bgOn)return;bgOn=on;try{BG[on?'start':'stop']({}).catch(()=>{})}catch(e){}}
 au.onplay=()=>{$('#pl').textContent='❚❚';bg(true)};au.onpause=()=>{$('#pl').textContent='▶';if(!au.ended)bg(false)};
 au.onended=()=>{$('#pl').textContent='▶';if(rep===2)playT(cur);else if(cur<tracks.length-1||rep===1||shuf)nxt(1);else bg(false)};
-if('mediaSession' in navigator){const m=navigator.mediaSession;m.setActionHandler('play',()=>au.play());m.setActionHandler('pause',()=>au.pause());m.setActionHandler('nexttrack',()=>nxt(1));m.setActionHandler('previoustrack',()=>nxt(-1))}
+try{if('mediaSession' in navigator){const m=navigator.mediaSession;m.setActionHandler('play',()=>au.play());m.setActionHandler('pause',()=>au.pause());m.setActionHandler('nexttrack',()=>nxt(1));m.setActionHandler('previoustrack',()=>nxt(-1))}}catch(e){}
 au.ontimeupdate=()=>{$('#tm').textContent=tf(au.currentTime)+' / '+tf(au.duration);if(au.duration)$('#sk').value=au.currentTime/au.duration*1000};
 $('#sk').oninput=e=>{if(au.duration)au.currentTime=e.target.value/1000*au.duration};
 $('#vm').onclick=()=>{mode=mode==='3d'?'bars':'3d';$('#vm').textContent=mode==='3d'?'3D':'Barras'};
